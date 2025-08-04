@@ -1,99 +1,114 @@
-import os
-import requests
+import logging
 from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ConversationHandler, ContextTypes
-from dotenv import load_dotenv
-from datetime import datetime
-
-load_dotenv()
-
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-WEBHOOK_URL = os.getenv("WEBHOOK_URL")
-
-CHOOSING_CITY, INPUT_MERCH_NAME, INPUT_STORE_NAME, CHOOSE_VISIT, CHOOSE_MERCH, CHOOSE_PRICETAGS, INPUT_COMMENT = range(7)
-
-user_data = {}
-
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    username = update.effective_user.username
-    full_name = update.effective_user.full_name
-
-    await update.message.reply_text("Выберите город:",
-    reply_markup=ReplyKeyboardMarkup([["Алматы", "Астана"]], resize_keyboard=True)
+from telegram.ext import (
+    ApplicationBuilder, CommandHandler, MessageHandler, ConversationHandler,
+    ContextTypes, filters
 )
-        reply_markup=ReplyKeyboardMarkup([["Алматы", "Астана"]], resize_keyboard=True))
-    return CHOOSING_CITY
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
 
-async def choose_city(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_data["city"] = update.message.text
-    await update.message.reply_text("Введите ФИО мерчендайзера:", reply_markup=ReplyKeyboardRemove())
-    return INPUT_MERCH_NAME
+# 🔐 Конфигурация
+BOT_TOKEN = "вставь_сюда_токен"
+SHEET_NAME = "RSM Survey"
+CREDENTIALS_FILE = "credentials.json"
 
-async def input_merch_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_data["merch_name"] = update.message.text
-    await update.message.reply_text("Введите название магазина:")
-    return INPUT_STORE_NAME
+# 🌐 Google Sheets подключение
+scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+creds = ServiceAccountCredentials.from_json_keyfile_name(CREDENTIALS_FILE, scope)
+client = gspread.authorize(creds)
+sheet = client.open(SHEET_NAME).sheet1
 
-async def input_store_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_data["store_name"] = update.message.text
-    await update.message.reply_text("Визит состоялся?", reply_markup=ReplyKeyboardMarkup([["Да", "Нет"]], resize_keyboard=True))
-    return CHOOSE_VISIT
+# 🧭 Состояния анкеты
+(CITY, FIO, SHOP_NAME, VISIT, ON_SITE, PRICE_TAGS, COMMENT) = range(7)
 
-async def choose_visit(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_data["visit"] = update.message.text
-    await update.message.reply_text("Мерчендайзер на месте?", reply_markup=ReplyKeyboardMarkup([["Да", "Нет"]], resize_keyboard=True))
-    return CHOOSE_MERCH
+# 🧵 Начало
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "Привет! Давайте начнём анкету.\nВыберите город:",
+        reply_markup=ReplyKeyboardMarkup([["Алматы", "Астана"]], resize_keyboard=True)
+    )
+    return CITY
 
-async def choose_merch(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_data["merch_present"] = update.message.text
-    await update.message.reply_text("Ценники?", reply_markup=ReplyKeyboardMarkup([["Да", "Нет"]], resize_keyboard=True))
-    return CHOOSE_PRICETAGS
+async def get_city(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["city"] = update.message.text
+    await update.message.reply_text("ФИО мерчендайзера:")
+    return FIO
 
-async def choose_pricetags(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_data["price_tags"] = update.message.text
-    await update.message.reply_text("Комментарий (можно оставить пустым):", reply_markup=ReplyKeyboardRemove())
-    return INPUT_COMMENT
+async def get_fio(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["fio"] = update.message.text
+    await update.message.reply_text("Название магазина:")
+    return SHOP_NAME
 
-async def input_comment(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_data["comment"] = update.message.text
-    user_data["telegram_id"] = update.effective_user.id
+async def get_shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["shop"] = update.message.text
+    await update.message.reply_text(
+        "Визит состоялся?",
+        reply_markup=ReplyKeyboardMarkup([["Да", "Нет"]], resize_keyboard=True)
+    )
+    return VISIT
 
-    # Отправка POST на Webhook
-    try:
-        response = requests.post(WEBHOOK_URL, json=user_data)
-        if response.status_code == 200:
-            await update.message.reply_text("Анкета успешно отправлена! ✅")
-        else:
-            await update.message.reply_text(f"Ошибка отправки: {response.text}")
-    except Exception as e:
-        await update.message.reply_text(f"Ошибка: {e}")
+async def get_visit(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["visit"] = update.message.text
+    await update.message.reply_text(
+        "Мерчендайзер на месте?",
+        reply_markup=ReplyKeyboardMarkup([["Да", "Нет"]], resize_keyboard=True)
+    )
+    return ON_SITE
 
+async def get_on_site(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["on_site"] = update.message.text
+    await update.message.reply_text(
+        "Ценники на месте?",
+        reply_markup=ReplyKeyboardMarkup([["Да", "Нет"]], resize_keyboard=True)
+    )
+    return PRICE_TAGS
+
+async def get_price_tags(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["price_tags"] = update.message.text
+    await update.message.reply_text("Комментарий:", reply_markup=ReplyKeyboardRemove())
+    return COMMENT
+
+async def get_comment(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["comment"] = update.message.text
+    data = context.user_data
+
+    # запись в таблицу
+    sheet.append_row([
+        data.get("city"),
+        data.get("fio"),
+        data.get("shop"),
+        data.get("visit"),
+        data.get("on_site"),
+        data.get("price_tags"),
+        data.get("comment")
+    ])
+
+    await update.message.reply_text("✅ Спасибо, данные записаны!")
+    context.user_data.clear()
     return ConversationHandler.END
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Отменено.")
+    await update.message.reply_text("⛔ Анкета отменена.", reply_markup=ReplyKeyboardRemove())
     return ConversationHandler.END
 
-def main():
+# 🚀 Запуск
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler("start", start)],
         states={
-            CHOOSING_CITY: [MessageHandler(filters.TEXT & ~filters.COMMAND, choose_city)],
-            INPUT_MERCH_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, input_merch_name)],
-            INPUT_STORE_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, input_store_name)],
-            CHOOSE_VISIT: [MessageHandler(filters.TEXT & ~filters.COMMAND, choose_visit)],
-            CHOOSE_MERCH: [MessageHandler(filters.TEXT & ~filters.COMMAND, choose_merch)],
-            CHOOSE_PRICETAGS: [MessageHandler(filters.TEXT & ~filters.COMMAND, choose_pricetags)],
-            INPUT_COMMENT: [MessageHandler(filters.TEXT & ~filters.COMMAND, input_comment)],
+            CITY: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_city)],
+            FIO: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_fio)],
+            SHOP_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_shop)],
+            VISIT: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_visit)],
+            ON_SITE: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_on_site)],
+            PRICE_TAGS: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_price_tags)],
+            COMMENT: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_comment)],
         },
         fallbacks=[CommandHandler("cancel", cancel)],
     )
 
     app.add_handler(conv_handler)
     app.run_polling()
-
-if __name__ == "__main__":
-    main()
