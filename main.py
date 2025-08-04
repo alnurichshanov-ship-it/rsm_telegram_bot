@@ -19,8 +19,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     username = update.effective_user.username
     full_name = update.effective_user.full_name
 
-    await update.message.reply_text("Привет! Давайте начнем анкету.")
-Выберите город:",
+    aawait update.message.reply_text("Выберите город:", 
+    reply_markup=ReplyKeyboardMarkup([["Алматы", "Астана"]], resize_keyboard=True)
+)
         reply_markup=ReplyKeyboardMarkup([["Алматы", "Астана"]], resize_keyboard=True))
     return CHOOSING_CITY
 
