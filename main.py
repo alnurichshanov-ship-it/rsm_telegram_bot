@@ -1,27 +1,18 @@
 import logging
+import requests
 from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import (
-    ApplicationBuilder, CommandHandler, MessageHandler, ConversationHandler,
-    ContextTypes, filters
+    ApplicationBuilder, CommandHandler, MessageHandler,
+    ConversationHandler, ContextTypes, filters
 )
-import gspread
-from oauth2client.service_account import ServiceAccountCredentials
 
-# 🔐 Конфигурация
-BOT_TOKEN = "вставь_сюда_токен"
-SHEET_NAME = "RSM Survey"
-CREDENTIALS_FILE = "credentials.json"
+# 🛠️ Укажи сюда Webhook URL от Google Apps Script
+WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbxE80kvIB6BzLyfllN_z8tv_VOxVtsC00qoypxvbN2iX9QoRTief49tzPDJIOIoahvp-A/exec"
 
-# 🌐 Google Sheets подключение
-scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-creds = ServiceAccountCredentials.from_json_keyfile_name(CREDENTIALS_FILE, scope)
-client = gspread.authorize(creds)
-sheet = client.open(SHEET_NAME).sheet1
-
-# 🧭 Состояния анкеты
+# 🧭 Состояния
 (CITY, FIO, SHOP_NAME, VISIT, ON_SITE, PRICE_TAGS, COMMENT) = range(7)
 
-# 🧵 Начало
+# 🔹 Команда /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "Привет! Давайте начнём анкету.\nВыберите город:",
@@ -71,19 +62,28 @@ async def get_price_tags(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def get_comment(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["comment"] = update.message.text
     data = context.user_data
+    user = update.message.from_user
 
-    # запись в таблицу
-    sheet.append_row([
-        data.get("city"),
-        data.get("fio"),
-        data.get("shop"),
-        data.get("visit"),
-        data.get("on_site"),
-        data.get("price_tags"),
-        data.get("comment")
-    ])
+    payload = {
+        "telegram_id": user.id,
+        "city": data.get("city"),
+        "merch_name": data.get("fio"),
+        "store_name": data.get("shop"),
+        "visit": data.get("visit"),
+        "merch_present": data.get("on_site"),
+        "price_tags": data.get("price_tags"),
+        "comment": data.get("comment")
+    }
 
-    await update.message.reply_text("✅ Спасибо, данные записаны!")
+    try:
+        response = requests.post(WEBHOOK_URL, json=payload)
+        if response.status_code == 200:
+            await update.message.reply_text("✅ Данные успешно отправлены!")
+        else:
+            await update.message.reply_text("⚠️ Ошибка при отправке данных.")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Ошибка: {e}")
+
     context.user_data.clear()
     return ConversationHandler.END
 
@@ -91,10 +91,10 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("⛔ Анкета отменена.", reply_markup=ReplyKeyboardRemove())
     return ConversationHandler.END
 
-# 🚀 Запуск
+# 🚀 Запуск бота
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
-    app = ApplicationBuilder().token(BOT_TOKEN).build()
+    app = ApplicationBuilder().token("7961105363:AAEo5UqQ3JGTpeFJHrV2_h1WTfck17F0v9E").build()
 
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler("start", start)],
