@@ -1,114 +1,141 @@
 import logging
 import requests
 from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
-from telegram.ext import (
-    ApplicationBuilder, CommandHandler, MessageHandler,
-    ConversationHandler, ContextTypes, filters
-)
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ConversationHandler, ContextTypes
 
-# 🛠️ Укажи сюда Webhook URL от Google Apps Script
+# --- ВСТАВЬ СЮДА СВОЙ ТОКЕН ---
+TELEGRAM_BOT_TOKEN = '7961105363:AAEo5UqQ3JGTpeFJHrV2_h1WTfck17F0v9E'
 WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbxE80kvIB6BzLyfllN_z8tv_VOxVtsC00qoypxvbN2iX9QoRTief49tzPDJIOIoahvp-A/exec"
+GOOGLE_SHEET_LINK = "https://docs.google.com/spreadsheets/d/AKfycbxE80kvIB6BzLyfllN_z8tv_VOxVtsC00qoypxvbN2iX9QoRTief49tzPDJIOIoahvp-A/edit"  # по желанию, для админов
 
-# 🧭 Состояния
-(CITY, FIO, SHOP_NAME, VISIT, ON_SITE, PRICE_TAGS, COMMENT) = range(7)
+# Логирование
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-# 🔹 Команда /start
+# --- Состояния
+(CITY, NAME, STORE, VISIT, PRESENT, TAGS, COMMENT) = range(7)
+
+# --- Фиктивная база пользователей (заменить чтением из Google Sheets при желании)
+USERS = {
+    "123456789": {"name": "Иван", "status": "RSM"},
+    "987654321": {"name": "Анна", "status": "Admin"},
+}
+
+# --- /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "Привет! Давайте начнём анкету.\nВыберите город:",
-        reply_markup=ReplyKeyboardMarkup([["Алматы", "Астана"]], resize_keyboard=True)
-    )
-    return CITY
+    user_id = str(update.effective_user.id)
 
-async def get_city(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Проверка в базе
+    user = USERS.get(user_id)
+
+    if user:
+        if user["status"] == "RSM":
+            await update.message.reply_text("Привет! Начнём анкету. В каком ты городе?")
+            return CITY
+        elif user["status"] == "Admin":
+            await update.message.reply_text(f"👋 Привет, админ!\nВот ссылка на таблицу:\n{GOOGLE_SHEET_LINK}")
+            return ConversationHandler.END
+    else:
+        await update.message.reply_text("Ты не зарегистрирован. Введи ФИО для заявки:")
+        context.user_data["status"] = "pending"
+        return NAME
+
+# --- Шаги анкеты
+async def city(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["city"] = update.message.text
-    await update.message.reply_text("ФИО мерчендайзера:")
-    return FIO
+    await update.message.reply_text("ФИО мерчендайзера?")
+    return NAME
 
-async def get_fio(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data["fio"] = update.message.text
-    await update.message.reply_text("Название магазина:")
-    return SHOP_NAME
+async def name(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if context.user_data.get("status") == "pending":
+        # Отправка заявки на регистрацию
+        payload = {
+            "telegram_id": update.effective_user.id,
+            "full_name": update.message.text,
+            "status": "Pending"
+        }
+        requests.post(WEBHOOK_URL, json=payload)
+        await update.message.reply_text("📩 Заявка отправлена. Ожидай одобрения.")
+        return ConversationHandler.END
+    context.user_data["merch_name"] = update.message.text
+    await update.message.reply_text("Название магазина?")
+    return STORE
 
-async def get_shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data["shop"] = update.message.text
-    await update.message.reply_text(
-        "Визит состоялся?",
-        reply_markup=ReplyKeyboardMarkup([["Да", "Нет"]], resize_keyboard=True)
-    )
+async def store(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["store_name"] = update.message.text
+    reply_keyboard = [["Да", "Нет"]]
+    await update.message.reply_text("Визит состоялся?", reply_markup=ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True))
     return VISIT
 
-async def get_visit(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def visit(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["visit"] = update.message.text
-    await update.message.reply_text(
-        "Мерчендайзер на месте?",
-        reply_markup=ReplyKeyboardMarkup([["Да", "Нет"]], resize_keyboard=True)
-    )
-    return ON_SITE
+    reply_keyboard = [["Да", "Нет"]]
+    await update.message.reply_text("Мерчендайзер на месте?", reply_markup=ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True))
+    return PRESENT
 
-async def get_on_site(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data["on_site"] = update.message.text
-    await update.message.reply_text(
-        "Ценники на месте?",
-        reply_markup=ReplyKeyboardMarkup([["Да", "Нет"]], resize_keyboard=True)
-    )
-    return PRICE_TAGS
+async def present(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["merch_present"] = update.message.text
+    reply_keyboard = [["Да", "Нет"]]
+    await update.message.reply_text("Ценники есть?", reply_markup=ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True))
+    return TAGS
 
-async def get_price_tags(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def tags(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["price_tags"] = update.message.text
-    await update.message.reply_text("Комментарий:", reply_markup=ReplyKeyboardRemove())
+    await update.message.reply_text("Комментарий?", reply_markup=ReplyKeyboardRemove())
     return COMMENT
 
-async def get_comment(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def comment(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["comment"] = update.message.text
-    data = context.user_data
-    user = update.message.from_user
 
+    # Подготовка данных
     payload = {
-        "telegram_id": user.id,
-        "city": data.get("city"),
-        "merch_name": data.get("fio"),
-        "store_name": data.get("shop"),
-        "visit": data.get("visit"),
-        "merch_present": data.get("on_site"),
-        "price_tags": data.get("price_tags"),
-        "comment": data.get("comment")
+        "telegram_id": update.effective_user.id,
+        "city": context.user_data["city"],
+        "merch_name": context.user_data["merch_name"],
+        "store_name": context.user_data["store_name"],
+        "visit": context.user_data["visit"],
+        "merch_present": context.user_data["merch_present"],
+        "price_tags": context.user_data["price_tags"],
+        "comment": context.user_data["comment"],
     }
 
+    # Отправка
     try:
         response = requests.post(WEBHOOK_URL, json=payload)
         if response.status_code == 200:
-            await update.message.reply_text("✅ Данные успешно отправлены!")
+            await update.message.reply_text("✅ Данные отправлены!")
         else:
-            await update.message.reply_text("⚠️ Ошибка при отправке данных.")
+            await update.message.reply_text(f"⚠️ Ошибка при отправке: {response.text}")
     except Exception as e:
-        await update.message.reply_text(f"❌ Ошибка: {e}")
+        await update.message.reply_text(f"⚠️ Ошибка сети: {e}")
 
-    context.user_data.clear()
     return ConversationHandler.END
 
+# --- Отмена
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("⛔ Анкета отменена.", reply_markup=ReplyKeyboardRemove())
+    await update.message.reply_text("❌ Опрос отменён.")
     return ConversationHandler.END
 
-# 🚀 Запуск бота
-if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
-    app = ApplicationBuilder().token("7961105363:AAEo5UqQ3JGTpeFJHrV2_h1WTfck17F0v9E").build()
+# --- Главная функция
+def main():
+    app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
 
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler("start", start)],
         states={
-            CITY: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_city)],
-            FIO: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_fio)],
-            SHOP_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_shop)],
-            VISIT: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_visit)],
-            ON_SITE: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_on_site)],
-            PRICE_TAGS: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_price_tags)],
-            COMMENT: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_comment)],
+            CITY: [MessageHandler(filters.TEXT & ~filters.COMMAND, city)],
+            NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, name)],
+            STORE: [MessageHandler(filters.TEXT & ~filters.COMMAND, store)],
+            VISIT: [MessageHandler(filters.TEXT & ~filters.COMMAND, visit)],
+            PRESENT: [MessageHandler(filters.TEXT & ~filters.COMMAND, present)],
+            TAGS: [MessageHandler(filters.TEXT & ~filters.COMMAND, tags)],
+            COMMENT: [MessageHandler(filters.TEXT & ~filters.COMMAND, comment)],
         },
         fallbacks=[CommandHandler("cancel", cancel)],
     )
 
     app.add_handler(conv_handler)
     app.run_polling()
+
+if __name__ == "__main__":
+    main()
