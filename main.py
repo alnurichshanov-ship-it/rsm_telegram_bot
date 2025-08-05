@@ -5,8 +5,8 @@ from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, fil
 
 # --- ВСТАВЬ СЮДА СВОЙ ТОКЕН ---
 TELEGRAM_BOT_TOKEN = '7961105363:AAEo5UqQ3JGTpeFJHrV2_h1WTfck17F0v9E'
-WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbxE80kvIB6BzLyfllN_z8tv_VOxVtsC00qoypxvbN2iX9QoRTief49tzPDJIOIoahvp-A/exec"
-GOOGLE_SHEET_LINK = "https://docs.google.com/spreadsheets/d/AKfycbxE80kvIB6BzLyfllN_z8tv_VOxVtsC00qoypxvbN2iX9QoRTief49tzPDJIOIoahvp-A/edit"  # по желанию, для админов
+WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbwJmHrBXep8JLUadTvporyxy_mYJYByYnkYqvRbTqkQVjn7r8xGS7QJNYaJYsCgdB-E/exec"
+GOOGLE_SHEET_LINK = "https://docs.google.com/spreadsheets/AKfycbwJmHrBXep8JLUadTvporyxy_mYJYByYnkYqvRbTqkQVjn7r8xGS7QJNYaJYsCgdB-E/edit"  # по желанию, для админов
 
 # Логирование
 logging.basicConfig(level=logging.INFO)
